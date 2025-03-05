@@ -30,18 +30,24 @@ show_menu() {
 install_dependencies() {
     echo -e "${ORANGE}[*] Инициализация системы...${NC}"
     
+    # Форсируем неинтерактивный режим
+    export DEBIAN_FRONTEND=noninteractive
+    
+    # Отключаем needrestart
+    sudo mkdir -p /etc/needrestart/conf.d
+    echo -e "\$nrconf{restart} = 'a';\n\$nrconf{kernelhints} = 0;" | sudo tee /etc/needrestart/conf.d/99-disable.conf >/dev/null
+
     sudo apt-get remove -y unattended-upgrades
     sudo apt-get update -y
-    sudo apt-get install -y \
+    sudo apt-get install -yq \
         curl git gnupg ca-certificates lsb-release \
         apt-transport-https software-properties-common \
         jq iproute2 net-tools uidmap dbus-user-session \
         cgroup-tools cgroupfs-mount libcgroup1
 
     echo -e "${ORANGE}[*] Установка Docker...${NC}"
-    curl -fsSL https://get.docker.com | sudo sh
+    curl -fsSL https://get.docker.com | sudo sh -s -- --yes
     sudo usermod -aG docker $USER
-    newgrp docker <<< "echo Docker ready"
 
     echo -e "${ORANGE}[*] Оптимизация ядра...${NC}"
     sudo modprobe br_netfilter
@@ -56,7 +62,6 @@ create_fake_proc() {
     local cpu=$1 ram=$2
     mkdir -p /fake_proc
     
-    # Исправлено: добавлена закрывающая скобка
     for i in $(seq 0 $(($cpu-1))); do
         echo "processor : $i" >> /fake_proc/cpuinfo
         echo "model name : Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz" >> /fake_proc/cpuinfo
