@@ -56,15 +56,13 @@ create_fake_proc() {
     local cpu=$1 ram=$2
     mkdir -p /fake_proc
     
-    # Генерация фейкового cpuinfo
-    grep -v "processor" /proc/cpuinfo > /fake_proc/cpuinfo
-    for i in $(seq 0 $(($cpu-1)); do
+    # Исправлено: добавлена закрывающая скобка
+    for i in $(seq 0 $(($cpu-1))); do
         echo "processor : $i" >> /fake_proc/cpuinfo
         echo "model name : Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz" >> /fake_proc/cpuinfo
         echo "cpu MHz : 2900.000" >> /fake_proc/cpuinfo
     done
     
-    # Генерация фейкового meminfo
     mem_total_kb=$(($ram * 1024 * 1024))
     sed "s/MemTotal.*/MemTotal:       ${mem_total_kb} kB/" /proc/meminfo > /fake_proc/meminfo
 }
@@ -72,16 +70,13 @@ create_fake_proc() {
 spoof_hardware() {
     local cpu=$1 ram=$2
     
-    # Монтирование фейковых proc-файлов
     mount --bind /fake_proc/cpuinfo /proc/cpuinfo
     mount --bind /fake_proc/meminfo /proc/meminfo
     
-    # Подмена cgroup
     mkdir -p /sys/fs/cgroup/memory/fake
     echo $((ram * 1024 * 1024 * 1024)) > /sys/fs/cgroup/memory/fake/memory.limit_in_bytes
     echo $$ > /sys/fs/cgroup/memory/fake/cgroup.procs
     
-    # Подмена lscpu
     echo "Architecture:        x86_64
 CPU(s):               ${cpu}
 Model name:          Intel(R) Xeon(R) Platinum 8375C" > /fake_proc/lscpu
