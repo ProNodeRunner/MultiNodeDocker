@@ -18,7 +18,6 @@ declare -A HW_PROFILES=(
 show_menu() {
     clear
     echo -e "${ORANGE}"
-    # Вывод логотипа
     curl -sSf $LOGO_URL 2>/dev/null || echo -e "=== MultiNodeDocker ==="
     echo -e "\n\n\n"
     echo " ༺ Многоузловая Установка Pro v2.0 ༻ "
@@ -44,7 +43,7 @@ install_dependencies() {
         curl git gnupg ca-certificates lsb-release \
         apt-transport-https software-properties-common \
         jq iproute2 net-tools uidmap dbus-user-session \
-        cgroup-tools cgroupfs-mount libcgroup1
+        cgroup-tools cgroupfs-mount libcgroup1 screen
 
     echo -e "${ORANGE}[*] Установка Docker...${NC}"
     curl -fsSL https://get.docker.com | sudo sh -s -- --yes
@@ -55,6 +54,22 @@ install_dependencies() {
     sudo sysctl -w net.ipv4.ip_forward=1
     sudo sysctl -w net.ipv6.conf.all.forwarding=1
     sudo sysctl -w vm.drop_caches=3
+
+    # Systemd сервис
+    echo -e "${ORANGE}[*] Настройка автозапуска...${NC}"
+    sudo tee /etc/systemd/system/multinode.service >/dev/null <<EOF
+[Unit]
+Description=MultiNode Service
+After=docker.service
+
+[Service]
+ExecStart=/usr/bin/screen -dmS nodes /bin/bash $0
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl enable multinode.service
 
     echo -e "${ORANGE}[✓] Система готова!${NC}"
 }
@@ -76,7 +91,7 @@ create_fake_proc() {
 spoof_hardware() {
     local cpu=$1 ram=$2
     
-    mount --bind /fake_proc/cpuinfo /proc/cpuinfo
+    mount -t proc none /proc -o remount
     mount --bind /fake_proc/meminfo /proc/meminfo
     
     mkdir -p /sys/fs/cgroup/memory/fake
@@ -98,14 +113,16 @@ create_node() {
     RAM=$(echo "${HW[1]}" | cut -d'=' -f2)
     SSD=$(echo "${HW[2]}" | cut -d'=' -f2)
 
+    docker rm -f "node${node_num}" 2>/dev/null
+
     if ! docker volume inspect "$volume_name" >/dev/null 2>&1; then
         echo -e "${ORANGE}[*] Инициализация ноды ${node_num}...${NC}"
         
         docker volume create "$volume_name"
         docker run --rm -v "$volume_name:/data" alpine sh -c "
-            echo -n '00:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g')' > /data/mac_address
-            echo -n 'node-$(openssl rand -hex 4)' > /data/hostname
-            echo -n '$(openssl rand -hex 16)' > /data/machine_id
+            printf '00:%02x:%02x:%02x:%02x:%02x\n' \$((RANDOM%256)) \$((RANDOM%256)) \$((RANDOM%256)) \$((RANDOM%256)) \$((RANDOM%256)) > /data/mac_address
+            echo -n 'node-\$(openssl rand -hex 4)' > /data/hostname
+            echo -n '\$(uuidgen)' > /data/machine_id
             echo -n '$CPU' > /data/cpu_cores
             echo -n '$RAM' > /data/ram_gb
             echo -n '$SSD' > /data/ssd_gb"
@@ -114,7 +131,7 @@ create_node() {
     sudo ip addr add "$node_ip/24" dev "$NETWORK_INTERFACE" 2>/dev/null
 
     echo -e "${ORANGE}[*] Запуск ноды ${node_num}...${NC}"
-    docker run -d \
+    screen -dmS "node$node_num" docker run -d \
         --name "node${node_num}" \
         --restart unless-stopped \
         --privileged \
@@ -124,14 +141,13 @@ create_node() {
         -e TZ="$TIMEZONE" \
         your-node-image \
         /bin/sh -c '
-            create_fake_proc $(cat /etc/node_data/cpu_cores) $(cat /etc/node_data/ram_gb)
-            spoof_hardware $(cat /etc/node_data/cpu_cores) $(cat /etc/node_data/ram_gb)
+            create_fake_proc \$(cat /etc/node_data/cpu_cores) \$(cat /etc/node_data/ram_gb)
+            spoof_hardware \$(cat /etc/node_data/cpu_cores) \$(cat /etc/node_data/ram_gb)
             exec /app/worker \
-                --ip "$(hostname -I | awk "{print \$1}")" \
-                --cpu $(cat /etc/node_data/cpu_cores) \
-                --ram $(cat /etc/node_data/ram_gb) \
-                --ssd $(cat /etc/node_data/ssd_gb)
-        '
+                --ip "\$(hostname -I | awk "{print \\\$1}")" \
+                --cpu \$(cat /etc/node_data/cpu_cores) \
+                --ram \$(cat /etc/node_data/ram_gb) \
+                --ssd \$(cat /etc/node_data/ssd_gb)'
 }
 
 setup_nodes() {
@@ -164,12 +180,12 @@ show_fingerprints() {
     for volume in $(docker volume ls -q --filter "name=node"); do
         echo -e "${ORANGE}${volume}${NC}"
         docker run --rm -v "$volume:/data" alpine sh -c '
-            echo "MAC: $(cat /data/mac_address)"
-            echo "Hostname: $(cat /data/hostname)"
-            echo "Machine ID: $(cat /data/machine_id)"
-            echo "CPU: $(cat /data/cpu_cores) cores"
-            echo "RAM: $(cat /data/ram_gb) GB"
-            echo "SSD: $(cat /data/ssd_gb) GB"
+            echo "MAC: \$(cat /data/mac_address)"
+            echo "Hostname: \$(cat /data/hostname)"
+            echo "Machine ID: \$(cat /data/machine_id)"
+            echo "CPU: \$(cat /data/cpu_cores) cores"
+            echo "RAM: \$(cat /data/ram_gb) GB"
+            echo "SSD: \$(cat /data/ssd_gb) GB"
         '
         echo "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
     done
