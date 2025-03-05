@@ -5,7 +5,7 @@ CONFIG_FILE="/etc/multinode.conf"
 BASE_IP="192.168.1.100"
 NETWORK_INTERFACE="eth0"
 TIMEZONE="Europe/Moscow"
-LOGO_URL="https://raw.githubusercontent.com/ProNodeRunner/Logo/main/Logo"
+LOGO_URL="https://raw.githubusercontent.com/ProNodeRunner/Logo/refs/heads/main/Logo"
 ORANGE='\033[0;33m'
 NC='\033[0m'
 
