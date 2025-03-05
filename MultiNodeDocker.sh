@@ -5,6 +5,7 @@ CONFIG_FILE="/etc/multinode.conf"
 BASE_IP="192.168.1.100"
 NETWORK_INTERFACE="eth0"
 TIMEZONE="Europe/Moscow"
+LOGO_URL="https://raw.githubusercontent.com/ProNodeRunner/Logo/main/Logo"
 ORANGE='\033[0;33m'
 NC='\033[0m'
 
@@ -17,6 +18,9 @@ declare -A HW_PROFILES=(
 show_menu() {
     clear
     echo -e "${ORANGE}"
+    # Вывод логотипа
+    curl -sSf $LOGO_URL 2>/dev/null || echo -e "=== MultiNodeDocker ==="
+    echo -e "\n\n\n"
     echo " ༺ Многоузловая Установка Pro v2.0 ༻ "
     echo "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
     echo "1) Установить все компоненты"
@@ -30,10 +34,7 @@ show_menu() {
 install_dependencies() {
     echo -e "${ORANGE}[*] Инициализация системы...${NC}"
     
-    # Форсируем неинтерактивный режим
     export DEBIAN_FRONTEND=noninteractive
-    
-    # Отключаем needrestart
     sudo mkdir -p /etc/needrestart/conf.d
     echo -e "\$nrconf{restart} = 'a';\n\$nrconf{kernelhints} = 0;" | sudo tee /etc/needrestart/conf.d/99-disable.conf >/dev/null
 
@@ -57,6 +58,23 @@ install_dependencies() {
 
     echo -e "${ORANGE}[✓] Система готова!${NC}"
 }
+
+check_containers() {
+    if ! docker info &>/dev/null; then
+        echo -e "${ORANGE}Докер не запущен! Запустите сначала установку компонентов.${NC}"
+        return
+    fi
+    
+    count=$(docker ps -a --filter "name=node" --format "{{.Names}}" | wc -l)
+    if [ $count -eq 0 ]; then
+        echo -e "${ORANGE}Запущенные контейнеры не найдены${NC}"
+    else
+        docker ps -a --filter "name=node" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    fi
+}
+
+# Остальные функции остаются без изменений
+# [create_fake_proc, spoof_hardware, create_node, setup_nodes, show_fingerprints] 
 
 create_fake_proc() {
     local cpu=$1 ram=$2
@@ -143,10 +161,6 @@ setup_nodes() {
         node_ip=$(echo "$BASE_IP" | awk -F. -v i="$i" '{OFS="."; $4 += i; print}')
         create_node "$i" "$profile" "$node_ip"
     done
-}
-
-check_containers() {
-    docker ps -a --filter "name=node" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 
 show_fingerprints() {
