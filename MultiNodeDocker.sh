@@ -6,7 +6,8 @@ BASE_IP="192.168.1.100"
 NETWORK_INTERFACE="eth0"
 TIMEZONE="Europe/Moscow"
 LOGO_URL="https://raw.githubusercontent.com/ProNodeRunner/Logo/refs/heads/main/Logo"
-NC='\033[0m'  # Убрана переменная ORANGE
+ORANGE='\033[0;33m'
+NC='\033[0m'
 
 declare -A HW_PROFILES=(
     ["basic"]="CPU=4,RAM=8,SSD=512"
@@ -16,11 +17,12 @@ declare -A HW_PROFILES=(
 
 show_menu() {
     clear
-    # Вывод логотипа без цвета
-    curl -sSf $LOGO_URL 2>/dev/null || echo "=== MultiNodeDocker ==="
+    echo -e "${ORANGE}"
+    # Вывод логотипа
+    curl -sSf $LOGO_URL 2>/dev/null || echo -e "=== MultiNodeDocker ==="
     echo -e "\n\n\n"
     echo " ༺ Многоузловая Установка Pro v2.0 ༻ "
-    echo "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+    echo "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
     echo "1) Установить все компоненты"
     echo "2) Задать количество нод"
     echo "3) Проверить работу контейнеров"
@@ -30,7 +32,7 @@ show_menu() {
 }
 
 install_dependencies() {
-    echo "[*] Инициализация системы..."
+    echo -e "${ORANGE}[*] Инициализация системы...${NC}"
     
     export DEBIAN_FRONTEND=noninteractive
     sudo mkdir -p /etc/needrestart/conf.d
@@ -44,17 +46,17 @@ install_dependencies() {
         jq iproute2 net-tools uidmap dbus-user-session \
         cgroup-tools cgroupfs-mount libcgroup1
 
-    echo "[*] Установка Docker..."
+    echo -e "${ORANGE}[*] Установка Docker...${NC}"
     curl -fsSL https://get.docker.com | sudo sh -s -- --yes
     sudo usermod -aG docker $USER
 
-    echo "[*] Оптимизация ядра..."
+    echo -e "${ORANGE}[*] Оптимизация ядра...${NC}"
     sudo modprobe br_netfilter
     sudo sysctl -w net.ipv4.ip_forward=1
     sudo sysctl -w net.ipv6.conf.all.forwarding=1
     sudo sysctl -w vm.drop_caches=3
 
-    echo "[✓] Система готова!"
+    echo -e "${ORANGE}[✓] Система готова!${NC}"
 }
 
 create_fake_proc() {
@@ -97,7 +99,7 @@ create_node() {
     SSD=$(echo "${HW[2]}" | cut -d'=' -f2)
 
     if ! docker volume inspect "$volume_name" >/dev/null 2>&1; then
-        echo "[*] Инициализация ноды ${node_num}..."
+        echo -e "${ORANGE}[*] Инициализация ноды ${node_num}...${NC}"
         
         docker volume create "$volume_name"
         docker run --rm -v "$volume_name:/data" alpine sh -c "
@@ -111,7 +113,7 @@ create_node() {
 
     sudo ip addr add "$node_ip/24" dev "$NETWORK_INTERFACE" 2>/dev/null
 
-    echo "[*] Запуск ноды ${node_num}..."
+    echo -e "${ORANGE}[*] Запуск ноды ${node_num}...${NC}"
     docker run -d \
         --name "node${node_num}" \
         --restart unless-stopped \
@@ -146,13 +148,13 @@ setup_nodes() {
 
 check_containers() {
     if ! docker info &>/dev/null; then
-        echo "Докер не запущен! Запустите сначала установку компонентов."
+        echo -e "${ORANGE}Докер не запущен! Запустите сначала установку компонентов.${NC}"
         return
     fi
     
     count=$(docker ps -a --filter "name=node" --format "{{.Names}}" | wc -l)
     if [ $count -eq 0 ]; then
-        echo "Запущенные контейнеры не найдены"
+        echo -e "${ORANGE}Запущенные контейнеры не найдены${NC}"
     else
         docker ps -a --filter "name=node" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     fi
@@ -160,7 +162,7 @@ check_containers() {
 
 show_fingerprints() {
     for volume in $(docker volume ls -q --filter "name=node"); do
-        echo "${volume}"
+        echo -e "${ORANGE}${volume}${NC}"
         docker run --rm -v "$volume:/data" alpine sh -c '
             echo "MAC: $(cat /data/mac_address)"
             echo "Hostname: $(cat /data/hostname)"
@@ -182,7 +184,7 @@ while true; do
         3) check_containers ;;
         4) show_fingerprints ;;
         5) exit 0 ;;
-        *) echo "Ошибка выбора!"; sleep 1 ;;
+        *) echo -e "${ORANGE}Ошибка выбора!${NC}"; sleep 1 ;;
     esac
     read -p "Нажмите Enter..."
 done
